@@ -209,9 +209,10 @@ export default function App() {
     const fetchYahooData = async () => {
       try {
         const yahooPath = `/v8/finance/chart/${ticker}?range=2y&interval=1d`;
+        const yahooProxyUrl = import.meta.env.VITE_YAHOO_PROXY_URL;
         const url = import.meta.env.DEV
           ? `/api/yahoo${yahooPath}`
-          : `https://corsproxy.io/?url=${encodeURIComponent(`https://query1.finance.yahoo.com${yahooPath}`)}`;
+          : `${yahooProxyUrl}${yahooPath}`;
         const response = await fetch(url);
 
         if (!response.ok) {

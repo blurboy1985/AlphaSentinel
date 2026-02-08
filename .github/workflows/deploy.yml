@@ -48,6 +48,7 @@ jobs:
         run: npm run build
         env:
           VITE_FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          VITE_YAHOO_PROXY_URL: ${{ secrets.YAHOO_PROXY_URL }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
