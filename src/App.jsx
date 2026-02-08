@@ -103,8 +103,6 @@ const calculateIndicators = (data) => {
           rsi = 100 - (100 / (1 + (avgGain / (avgLoss || 1))));
         }
       } else {
-        const currentGain = change > 0 ? change : 0;
-        const currentLoss = change < 0 ? -change : 0;
         // Simple RSI approximation for this demo loop
         const slice = data.slice(index - rsiPeriod + 1, index + 1);
         let g = 0, l = 0;
