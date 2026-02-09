@@ -1,16 +1,44 @@
-# React + Vite
+# CLAUDE.md
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Currently, two official plugins are available:
+## Build & Dev Commands
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- `npm run dev` — Start Vite dev server with HMR
+- `npm run build` — Production build to `dist/`
+- `npm run lint` — ESLint across the project
+- `npm run preview` — Preview the production build locally
 
-## React Compiler
+No test framework is configured.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Architecture
 
-## Expanding the ESLint configuration
+Single-page React (JSX, no TypeScript) stock analysis dashboard. Styled with Tailwind CSS v3. Built with Vite. Deployed to GitHub Pages via CI (`main` branch pushes).
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+**Everything lives in `src/App.jsx`** — the entire app is one file containing:
+- **Utility functions** (`seededRandom`, `generateStockData`, `calculateIndicators`) — deterministic data generation and technical indicator math (SMA50/200, RSI-14, Bollinger Bands/Z-Score)
+- **`ScoreCard` component** — reusable card for displaying individual factor scores
+- **`App` component** — all state, data fetching, scoring logic, and UI layout
+
+### Data Flow
+
+Two independent data pipelines triggered by ticker change:
+
+1. **Historical prices (Yahoo Finance)**: In dev, proxied through Vite (`/api/yahoo` → `query1.finance.yahoo.com`). In production, routed through `corsproxy.io`. Falls back to deterministic simulated data on failure.
+2. **Real-time data (Finnhub API)**: Quote, analyst recommendations, company profile. Requires API key stored in `VITE_FINNHUB_API_KEY` env var or saved to localStorage (`alphaEngine_finnhubKey`).
+
+### Scoring Model
+
+Three factors combined with user-adjustable weights (sliders):
+- **Trend**: Price vs SMA200 (+1/−1)
+- **Mean Reversion**: Bollinger Z-Score extremes (+1/0/−1)
+- **Sentiment**: Finnhub analyst consensus, falls back to Price vs SMA50
+
+Weighted sum produces BUY/SELL/NEUTRAL verdict. Position sizing uses volatility-targeted Kelly-style calculation.
+
+## Key Config Details
+
+- `vite.config.js`: `base` path switches for GitHub Actions (`/AlphaSentinel/`). Yahoo Finance proxy configured for dev server.
+- ESLint: `no-unused-vars` allows uppercase-starting vars (component imports) and `_`-prefixed args. Flat config format.
+- CI pipeline: lint → build → deploy to GitHub Pages (deploy only on `main` push). Finnhub key injected from `secrets.FINNHUB_API_KEY`.
+- `.env` is gitignored; `VITE_FINNHUB_API_KEY` is the only env var.
