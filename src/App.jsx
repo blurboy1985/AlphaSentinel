@@ -24,38 +24,25 @@ import {
 } from 'lucide-react';
 
 // --- UTILS & MATH HELPERS ---
-
-// Deterministic random number generator to make sure "AAPL" always looks like "AAPL"
 const seededRandom = (seed) => {
   let x = Math.sin(seed++) * 10000;
   return x - Math.floor(x);
 };
 
 const generateStockData = (ticker) => {
-  // Turn ticker string into a numeric seed
   let seed = ticker.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  
   const data = [];
-  // Start price between 100-150
   let price = 100 + (seededRandom(seed) * 50); 
-  let trend = (seededRandom(seed + 1) - 0.5) * 0.2; // Slight drift
-  
+  let trend = (seededRandom(seed + 1) - 0.5) * 0.2; 
   const now = new Date();
-  
-  // Generate 400 points (200 warm-up + 200 visible)
-  // This ensures SMA200 is valid from the very first visible point
   const totalPoints = 400; 
   
   for (let i = 0; i < totalPoints; i++) {
     const date = new Date(now);
     date.setDate(date.getDate() - (totalPoints - i));
-    
-    // Random Walk with Drift
-    const volatility = price * 0.02; // 2% daily vol
+    const volatility = price * 0.02; 
     const change = (seededRandom(seed + i) - 0.5) * volatility + trend;
     price += change;
-    
-    // Ensure positive price
     price = Math.max(price, 5);
 
     data.push({
@@ -71,26 +58,22 @@ const calculateIndicators = (data) => {
   const period50 = 50;
   const period200 = 200;
   const rsiPeriod = 14;
-  
   let gains = 0;
   let losses = 0;
 
   const dataWithIndicators = data.map((day, index) => {
-    // SMA 50
     let sma50 = null;
     if (index >= period50 - 1) {
       const slice = data.slice(index - period50 + 1, index + 1);
       sma50 = slice.reduce((sum, d) => sum + d.price, 0) / period50;
     }
 
-    // SMA 200
     let sma200 = null;
     if (index >= period200 - 1) {
       const slice = data.slice(index - period200 + 1, index + 1);
       sma200 = slice.reduce((sum, d) => sum + d.price, 0) / period200;
     }
 
-    // RSI
     let rsi = 50;
     if (index > 0) {
       const change = day.price - data[index - 1].price;
@@ -103,7 +86,6 @@ const calculateIndicators = (data) => {
           rsi = 100 - (100 / (1 + (avgGain / (avgLoss || 1))));
         }
       } else {
-        // Simple RSI approximation for this demo loop
         const slice = data.slice(index - rsiPeriod + 1, index + 1);
         let g = 0, l = 0;
         for (let k = 1; k < slice.length; k++) {
@@ -114,7 +96,6 @@ const calculateIndicators = (data) => {
       }
     }
 
-    // Bollinger Bands (20, 2)
     let bbUpper = null;
     let bbLower = null;
     let zScore = 0;
@@ -130,8 +111,6 @@ const calculateIndicators = (data) => {
     return { ...day, sma50, sma200, rsi, bbUpper, bbLower, zScore };
   });
 
-  // Return only the last 200 points for the chart view
-  // This ensures SMAs are pre-calculated for the visible range
   return dataWithIndicators.slice(-200);
 };
 
@@ -168,39 +147,18 @@ const ScoreCard = ({ title, score, weight, description, icon: Icon, color }) => 
 };
 
 export default function App() {
-  const envKey = import.meta.env.VITE_FINNHUB_API_KEY || '';
-  const savedKey = localStorage.getItem('alphaEngine_finnhubKey') || envKey;
-  const savedDefault = localStorage.getItem('alphaEngine_defaultTicker') || 'NFLX';
-
-  const [ticker, setTicker] = useState(savedDefault);
-  const [searchVal, setSearchVal] = useState(savedDefault);
+  const apiKey = import.meta.env.VITE_FINNHUB_API_KEY || ''; 
+  
+  const [ticker, setTicker] = useState('NFLX');
+  const [searchVal, setSearchVal] = useState('NFLX');
   const [data, setData] = useState([]);
   const [weights, setWeights] = useState({ trend: 0.4, meanRev: 0.4, sentiment: 0.2 });
   const [analyzing, setAnalyzing] = useState(false);
-  const [dataSource, setDataSource] = useState('loading'); // 'yahoo' | 'simulated' | 'loading'
-  const [apiKey, setApiKey] = useState(savedKey);
-  const [apiKeyInput, setApiKeyInput] = useState(savedKey);
-  const [defaultTickerInput, setDefaultTickerInput] = useState(savedDefault);
-  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [dataSource, setDataSource] = useState('loading'); 
   const [finnhubQuote, setFinnhubQuote] = useState(null);
   const [recommendations, setRecommendations] = useState(null);
   const [companyProfile, setCompanyProfile] = useState(null);
 
-  const handleSaveSettings = () => {
-    const newKey = apiKeyInput.trim();
-    const newDefault = defaultTickerInput.trim().toUpperCase();
-    if (newKey) {
-      localStorage.setItem('alphaEngine_finnhubKey', newKey);
-      setApiKey(newKey);
-    }
-    if (newDefault) {
-      localStorage.setItem('alphaEngine_defaultTicker', newDefault);
-    }
-    setSettingsSaved(true);
-    setTimeout(() => setSettingsSaved(false), 2000);
-  };
-
-  // Effect 1: Fetch historical OHLCV from Yahoo Finance (no API key needed)
   useEffect(() => {
     if (!ticker) return;
     setAnalyzing(true);
@@ -215,16 +173,12 @@ export default function App() {
           : `${yahooProxyUrl}${yahooPath}`;
         const response = await fetch(url);
 
-        if (!response.ok) {
-          throw new Error(`Yahoo Finance HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Yahoo Finance HTTP ${response.status}`);
 
         const json = await response.json();
         const result = json.chart?.result?.[0];
 
-        if (!result || !result.timestamp) {
-          throw new Error('No data returned from Yahoo Finance');
-        }
+        if (!result || !result.timestamp) throw new Error('No data');
 
         const timestamps = result.timestamp;
         const quotes = result.indicators.quote[0];
@@ -239,7 +193,7 @@ export default function App() {
         setData(processedData);
         setDataSource('yahoo');
       } catch (error) {
-        console.warn('Yahoo Finance fetch failed, using simulated data:', error.message);
+        console.warn('Yahoo fetch failed, using simulation:', error.message);
         const rawData = generateStockData(ticker);
         setData(calculateIndicators(rawData));
         setDataSource('simulated');
@@ -251,7 +205,6 @@ export default function App() {
     fetchYahooData();
   }, [ticker]);
 
-  // Effect 2: Fetch Finnhub quote, recommendations, and company profile
   useEffect(() => {
     if (!ticker || !apiKey) {
       setFinnhubQuote(null);
@@ -276,13 +229,11 @@ export default function App() {
       if (recsRes.status === 'fulfilled' && recsRes.value.ok) {
         const recs = await recsRes.value.json();
         if (Array.isArray(recs) && recs.length > 0) setRecommendations(recs[0]);
-        else setRecommendations(null);
       }
 
       if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
         const profile = await profileRes.value.json();
         if (profile.name) setCompanyProfile(profile);
-        else setCompanyProfile(null);
       }
     };
 
@@ -290,19 +241,14 @@ export default function App() {
   }, [ticker, apiKey]);
 
 
-  // Derived State (Latest Signals)
   const current = data[data.length - 1] || {};
   const prev = data[data.length - 2] || {};
   
-  // Model A: Trend
-  // Logic: Bullish if Price > SMA200. Bearish if < SMA200.
   const trendScore = current.price > current.sma200 ? 1 : -1;
   const trendDesc = trendScore === 1 
     ? "Price is trading above the long-term 200-day average. Uptrend intact." 
     : "Price is below the 200-day average. Primary trend is bearish.";
 
-  // Model B: Mean Reversion
-  // Logic: Buy if Z-Score < -2. Sell if Z-Score > 2. Neutral otherwise.
   let revScore = 0;
   if (current.zScore < -2) revScore = 1;
   else if (current.zScore > 2) revScore = -1;
@@ -312,7 +258,6 @@ export default function App() {
         ? "Statistical extension to upside (Overbought). Pullback likely." 
         : "Price is within normal statistical bands. No edge.";
 
-  // Model C: Sentiment (Real analyst consensus from Finnhub, fallback to SMA50)
   let sentimentScore = 0;
   let sentimentDesc = '';
   if (recommendations) {
@@ -334,17 +279,14 @@ export default function App() {
       : "No analyst data available. Price below SMA50 used as proxy.";
   }
 
-  // Final Calculations
   const totalScore = (trendScore * weights.trend) + (revScore * weights.meanRev) + (sentimentScore * weights.sentiment);
   
-  // Kelly Sizing
-  const volatility = (current.price - prev.price) / prev.price; // Daily return
+  const volatility = (current.price - prev.price) / prev.price; 
   const annualizedVol = Math.abs(volatility * Math.sqrt(252));
-  const targetVol = 0.15; // 15% target
+  const targetVol = 0.15; 
   let positionSize = (targetVol / (annualizedVol || 0.01)) * Math.abs(totalScore); 
-  positionSize = Math.min(positionSize, 2.5) * 10; // Scaled for display
+  positionSize = Math.min(positionSize, 2.5) * 10; 
   
-  // Color Helpers
   const getScoreColor = (s) => s > 0.2 ? 'text-green-400' : s < -0.2 ? 'text-red-400' : 'text-yellow-400';
   const getScoreBg = (s) => s > 0.2 ? 'bg-green-500/20 border-green-500' : s < -0.2 ? 'bg-red-500/20 border-red-500' : 'bg-yellow-500/20 border-yellow-500';
 
@@ -392,7 +334,6 @@ export default function App() {
           <span>
             <strong>Live Data</strong> — {companyProfile?.name || ticker} historical prices via Yahoo Finance.
             {finnhubQuote && ` Real-time: $${finnhubQuote.c.toFixed(2)}`}
-            {recommendations && ` · ${(recommendations.strongBuy || 0) + (recommendations.buy || 0) + (recommendations.hold || 0) + (recommendations.sell || 0) + (recommendations.strongSell || 0)} analyst ratings`}
           </span>
         </div>
       )}
@@ -457,42 +398,6 @@ export default function App() {
                 </div>
             </div>
 
-            {/* API & Defaults */}
-            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-                <div className="flex items-center gap-2 mb-4 text-slate-100">
-                    <Shield size={18} />
-                    <h3 className="font-semibold">API Settings</h3>
-                </div>
-                <div className="space-y-4">
-                    <div>
-                        <label className="text-xs text-slate-400 block mb-1">Finnhub API Key</label>
-                        <input
-                            type="password"
-                            value={apiKeyInput}
-                            onChange={(e) => setApiKeyInput(e.target.value)}
-                            placeholder="Enter Finnhub API key"
-                            className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs text-slate-400 block mb-1">Default Ticker</label>
-                        <input
-                            type="text"
-                            value={defaultTickerInput}
-                            onChange={(e) => setDefaultTickerInput(e.target.value.toUpperCase())}
-                            placeholder="e.g. AAPL"
-                            className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
-                        />
-                    </div>
-                    <button
-                        onClick={handleSaveSettings}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 rounded-lg transition-colors"
-                    >
-                        {settingsSaved ? 'Saved!' : 'Save Settings'}
-                    </button>
-                </div>
-            </div>
-
             {/* Score Cards */}
             <div className="space-y-3">
                 <ScoreCard 
@@ -550,10 +455,20 @@ export default function App() {
                             </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                        
+                        {/* 1. UPDATED XAXIS FOR PRICE CHART */}
                         <XAxis 
                             dataKey="date" 
-                            hide={true} 
+                            tickFormatter={(tick) => {
+                                const d = new Date(tick);
+                                return `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`;
+                            }}
+                            minTickGap={30}
+                            tick={{fill: '#94a3b8', fontSize: 10}}
+                            axisLine={false}
+                            tickLine={false}
                         />
+
                         <YAxis 
                             domain={['auto', 'auto']} 
                             orientation="right" 
@@ -564,7 +479,9 @@ export default function App() {
                         <Tooltip 
                             contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px'}}
                             itemStyle={{color: '#e2e8f0'}}
+                            labelFormatter={(label) => new Date(label).toLocaleDateString()}
                         />
+                        
                         <Area 
                             type="monotone" 
                             dataKey="price" 
@@ -573,7 +490,6 @@ export default function App() {
                             fillOpacity={1} 
                             fill="url(#colorPrice)" 
                         />
-                        {/* SMA Lines now have thicker strokes and valid data across the chart */}
                         <Line type="monotone" dataKey="sma50" stroke="#fb923c" dot={false} strokeWidth={2} />
                         <Line type="monotone" dataKey="sma200" stroke="#ef4444" dot={false} strokeWidth={2} />
                     </ComposedChart>
@@ -591,7 +507,20 @@ export default function App() {
                 <ResponsiveContainer width="100%" height="80%">
                     <LineChart data={data}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                        <XAxis dataKey="date" hide={true} />
+                        
+                        {/* 2. UPDATED XAXIS FOR RSI CHART */}
+                        <XAxis 
+                            dataKey="date" 
+                            tickFormatter={(tick) => {
+                                const d = new Date(tick);
+                                return `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`;
+                            }}
+                            minTickGap={30}
+                            tick={{fill: '#94a3b8', fontSize: 10}}
+                            axisLine={false}
+                            tickLine={false}
+                        />
+                        
                         <YAxis domain={[0, 100]} orientation="right" tick={{fill: '#94a3b8', fontSize: 10}} axisLine={false} tickLine={false} ticks={[0, 30, 50, 70, 100]} />
                         <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="3 3" />
                         <ReferenceLine y={30} stroke="#22c55e" strokeDasharray="3 3" />
