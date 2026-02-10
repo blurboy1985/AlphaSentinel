@@ -146,10 +146,19 @@ const ScoreCard = ({ title, score, weight, description, icon: Icon, color }) => 
   );
 };
 
+const TIME_RANGES = [
+  { label: '1M', value: '1mo', interval: '1d' },
+  { label: '3M', value: '3mo', interval: '1d' },
+  { label: '1Y', value: '1y', interval: '1d' },
+  { label: '5Y', value: '5y', interval: '1wk' },
+  { label: 'Max', value: 'max', interval: '1mo' },
+];
+
 export default function App() {
   const apiKey = import.meta.env.VITE_FINNHUB_API_KEY || ''; 
   
   const [ticker, setTicker] = useState('NFLX');
+  const [timeRange, setTimeRange] = useState('1Y');
   const [searchVal, setSearchVal] = useState('NFLX');
   const [data, setData] = useState([]);
   const [weights, setWeights] = useState({ trend: 0.4, meanRev: 0.4, sentiment: 0.2 });
@@ -166,7 +175,8 @@ export default function App() {
 
     const fetchYahooData = async () => {
       try {
-        const yahooPath = `/v8/finance/chart/${ticker}?range=2y&interval=1d`;
+        const rangeConfig = TIME_RANGES.find(r => r.label === timeRange) || TIME_RANGES[2];
+        const yahooPath = `/v8/finance/chart/${ticker}?range=${rangeConfig.value}&interval=${rangeConfig.interval}`;
         const yahooProxyUrl = import.meta.env.VITE_YAHOO_PROXY_URL;
         const url = import.meta.env.DEV
           ? `/api/yahoo${yahooPath}`
@@ -203,7 +213,7 @@ export default function App() {
     };
 
     fetchYahooData();
-  }, [ticker]);
+  }, [ticker, timeRange]);
 
   useEffect(() => {
     if (!ticker || !apiKey) {
@@ -243,6 +253,7 @@ export default function App() {
 
   const current = data[data.length - 1] || {};
   const prev = data[data.length - 2] || {};
+  
   const hasData = data.length > 0;
 
   const trendScore = hasData ? (current.price > current.sma200 ? 1 : -1) : 0;
@@ -298,7 +309,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-200 font-sans p-4 md:p-8">
-      
       {/* Header */}
       <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div className="flex items-center gap-3">
@@ -441,9 +451,26 @@ export default function App() {
                         {companyProfile?.name ? `${companyProfile.name} (${ticker})` : ticker} Price Action
                         {analyzing && <RefreshCw className="animate-spin text-blue-500" size={14} />}
                     </h3>
-                    <div className="flex gap-4 text-xs">
+                    <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
+                      <div className="flex gap-3 text-xs hidden sm:flex">
                         <span className="flex items-center gap-1 text-orange-400"><div className="w-2 h-2 rounded-full bg-orange-400"></div> SMA 50</span>
                         <span className="flex items-center gap-1 text-red-500"><div className="w-2 h-2 rounded-full bg-red-500"></div> SMA 200</span>
+                      </div>
+                      <div className="flex bg-slate-700/50 rounded-lg p-1 gap-1">
+                        {TIME_RANGES.map((r) => (
+                          <button
+                            key={r.label}
+                            onClick={() => setTimeRange(r.label)}
+                            className={`px-2 py-1 text-xs font-medium rounded transition-all ${
+                              timeRange === r.label 
+                                ? 'bg-blue-600 text-white shadow-sm' 
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-600/50'
+                            }`}
+                          >
+                            {r.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                 </div>
                 
