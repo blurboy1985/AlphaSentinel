@@ -243,8 +243,9 @@ export default function App() {
 
   const current = data[data.length - 1] || {};
   const prev = data[data.length - 2] || {};
-  
-  const trendScore = current.price > current.sma200 ? 1 : -1;
+  const hasData = data.length > 0;
+
+  const trendScore = hasData ? (current.price > current.sma200 ? 1 : -1) : 0;
   const trendDesc = trendScore === 1 
     ? "Price is trading above the long-term 200-day average. Uptrend intact." 
     : "Price is below the 200-day average. Primary trend is bearish.";
@@ -269,11 +270,11 @@ export default function App() {
       sentimentScore = normalized > 0.3 ? 1 : normalized < -0.3 ? -1 : 0;
       sentimentDesc = `${totalAnalysts} analysts: ${strongBuy + buy} Buy, ${hold} Hold, ${sell + strongSell} Sell. Consensus score: ${rawScore.toFixed(2)}.`;
     } else {
-      sentimentScore = current.price > current.sma50 ? 1 : -1;
+      sentimentScore = hasData ? (current.price > current.sma50 ? 1 : -1) : 0;
       sentimentDesc = 'No analyst data. Falling back to price vs SMA50.';
     }
   } else {
-    sentimentScore = current.price > current.sma50 ? 1 : -1;
+    sentimentScore = hasData ? (current.price > current.sma50 ? 1 : -1) : 0;
     sentimentDesc = sentimentScore === 1
       ? "No analyst data available. Price above SMA50 used as proxy."
       : "No analyst data available. Price below SMA50 used as proxy.";
@@ -281,7 +282,7 @@ export default function App() {
 
   const totalScore = (trendScore * weights.trend) + (revScore * weights.meanRev) + (sentimentScore * weights.sentiment);
   
-  const volatility = (current.price - prev.price) / prev.price; 
+  const volatility = hasData && prev.price ? (current.price - prev.price) / prev.price : 0;
   const annualizedVol = Math.abs(volatility * Math.sqrt(252));
   const targetVol = 0.15; 
   let positionSize = (targetVol / (annualizedVol || 0.01)) * Math.abs(totalScore); 
@@ -590,7 +591,7 @@ export default function App() {
                         <p className="text-xs text-slate-400 mb-2">Stop Loss Level</p>
                         <div className="flex items-center gap-2">
                             <span className="text-lg font-mono text-red-400">
-                                ${(current.price * 0.92).toFixed(2)}
+                                ${hasData ? (current.price * 0.92).toFixed(2) : '—'}
                             </span>
                             <span className="text-xs text-red-500/80 bg-red-500/10 px-2 py-0.5 rounded">
                                 -8.0%
