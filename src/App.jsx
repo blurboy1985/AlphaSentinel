@@ -161,7 +161,7 @@ export default function App() {
   const [timeRange, setTimeRange] = useState('1Y');
   const [searchVal, setSearchVal] = useState('NFLX');
   const [data, setData] = useState([]);
-  const [weights, setWeights] = useState({ trend: 0.4, meanRev: 0.4, sentiment: 0.2 });
+  const [weights, setWeights] = useState({ trend: 0.3, meanRev: 0.3, momentum: 0.2, sentiment: 0.2 });
   const [analyzing, setAnalyzing] = useState(false);
   const [dataSource, setDataSource] = useState('loading'); 
   const [finnhubQuote, setFinnhubQuote] = useState(null);
@@ -266,6 +266,16 @@ export default function App() {
     ? "Price is below both SMA50 and SMA200. Both timeframes confirm a downtrend."
     : "Price is between SMA50 and SMA200. Mixed signals — no confirmed trend direction.";
 
+  let momentumScore = 0;
+  let momentumDesc = '';
+  if (hasData && current.rsi != null) {
+    if (current.rsi > 60) { momentumScore = 1; momentumDesc = `RSI at ${current.rsi.toFixed(1)} — above 60 indicates strong bullish momentum.`; }
+    else if (current.rsi < 40) { momentumScore = -1; momentumDesc = `RSI at ${current.rsi.toFixed(1)} — below 40 indicates strong bearish momentum.`; }
+    else { momentumScore = 0; momentumDesc = `RSI at ${current.rsi.toFixed(1)} — between 40-60, no clear directional momentum.`; }
+  } else {
+    momentumDesc = 'Insufficient data to calculate RSI momentum.';
+  }
+
   let revScore = 0;
   if (current.zScore < -2) revScore = 1;
   else if (current.zScore > 2) revScore = -1;
@@ -296,7 +306,7 @@ export default function App() {
       : "No analyst data available. Price below SMA50 used as proxy.";
   }
 
-  const totalScore = (trendScore * weights.trend) + (revScore * weights.meanRev) + (sentimentScore * weights.sentiment);
+  const totalScore = (trendScore * weights.trend) + (momentumScore * weights.momentum) + (revScore * weights.meanRev) + (sentimentScore * weights.sentiment);
   
   const volatility = hasData && prev.price ? (current.price - prev.price) / prev.price : 0;
   const annualizedVol = Math.abs(volatility * Math.sqrt(252));
@@ -389,6 +399,18 @@ export default function App() {
                     </div>
                     <div>
                         <div className="flex justify-between text-xs mb-1">
+                            <span className="text-slate-400">Momentum Weight</span>
+                            <span className="text-cyan-400">{(weights.momentum * 100).toFixed(0)}%</span>
+                        </div>
+                        <input
+                            type="range" min="0" max="1" step="0.1"
+                            value={weights.momentum}
+                            onChange={(e) => setWeights({...weights, momentum: parseFloat(e.target.value)})}
+                            className="w-full accent-cyan-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                        />
+                    </div>
+                    <div>
+                        <div className="flex justify-between text-xs mb-1">
                             <span className="text-slate-400">Mean Rev Weight</span>
                             <span className="text-purple-400">{(weights.meanRev * 100).toFixed(0)}%</span>
                         </div>
@@ -424,10 +446,18 @@ export default function App() {
                     icon={TrendingUp}
                     color={{bg: 'bg-blue-500', text: 'text-blue-400'}}
                 />
-                <ScoreCard 
-                    title="Mean Reversion" 
-                    score={revScore} 
-                    weight={weights.meanRev} 
+                <ScoreCard
+                    title="RSI Momentum"
+                    score={momentumScore}
+                    weight={weights.momentum}
+                    description={momentumDesc}
+                    icon={Activity}
+                    color={{bg: 'bg-cyan-500', text: 'text-cyan-400'}}
+                />
+                <ScoreCard
+                    title="Mean Reversion"
+                    score={revScore}
+                    weight={weights.meanRev}
                     description={revDesc}
                     icon={RefreshCw}
                     color={{bg: 'bg-purple-500', text: 'text-purple-400'}}
