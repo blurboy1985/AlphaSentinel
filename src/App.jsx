@@ -269,9 +269,9 @@ export default function App() {
   let momentumScore = 0;
   let momentumDesc = '';
   if (hasData && current.rsi != null) {
-    if (current.rsi > 60) { momentumScore = 1; momentumDesc = `RSI at ${current.rsi.toFixed(1)} — above 60 indicates strong bullish momentum.`; }
-    else if (current.rsi < 40) { momentumScore = -1; momentumDesc = `RSI at ${current.rsi.toFixed(1)} — below 40 indicates strong bearish momentum.`; }
-    else { momentumScore = 0; momentumDesc = `RSI at ${current.rsi.toFixed(1)} — between 40-60, no clear directional momentum.`; }
+    if (current.rsi > 70) { momentumScore = 1; momentumDesc = `RSI at ${current.rsi.toFixed(1)} — above 70 indicates strong bullish momentum.`; }
+    else if (current.rsi < 30) { momentumScore = -1; momentumDesc = `RSI at ${current.rsi.toFixed(1)} — below 30 indicates strong bearish momentum.`; }
+    else { momentumScore = 0; momentumDesc = `RSI at ${current.rsi.toFixed(1)} — between 30-70, no clear directional momentum.`; }
   } else {
     momentumDesc = 'Insufficient data to calculate RSI momentum.';
   }
