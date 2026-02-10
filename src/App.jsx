@@ -216,12 +216,11 @@ export default function App() {
   }, [ticker, timeRange]);
 
   useEffect(() => {
-    if (!ticker || !apiKey) {
-      setFinnhubQuote(null);
-      setRecommendations(null);
-      setCompanyProfile(null);
-      return;
-    }
+    setFinnhubQuote(null);
+    setRecommendations(null);
+    setCompanyProfile(null);
+
+    if (!ticker || !apiKey) return;
 
     const fetchFinnhubData = async () => {
       const base = 'https://finnhub.io/api/v1';
