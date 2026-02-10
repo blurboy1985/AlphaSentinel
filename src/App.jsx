@@ -256,10 +256,16 @@ export default function App() {
   
   const hasData = data.length > 0;
 
-  const trendScore = hasData ? (current.price > current.sma200 ? 1 : -1) : 0;
-  const trendDesc = trendScore === 1 
-    ? "Price is trading above the long-term 200-day average. Uptrend intact." 
-    : "Price is below the 200-day average. Primary trend is bearish.";
+  const trendScore = !hasData ? 0
+    : (current.price > current.sma200 && current.price > current.sma50) ? 1
+    : (current.price < current.sma200 && current.price < current.sma50) ? -1
+    : 0;
+
+  const trendDesc = trendScore === 1
+    ? "Price is above both SMA50 and SMA200. Both timeframes confirm an uptrend."
+    : trendScore === -1
+    ? "Price is below both SMA50 and SMA200. Both timeframes confirm a downtrend."
+    : "Price is between SMA50 and SMA200. Mixed signals — no confirmed trend direction.";
 
   let revScore = 0;
   if (current.zScore < -2) revScore = 1;
