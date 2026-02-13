@@ -19,11 +19,31 @@ import {
   TrendingUp, 
   RefreshCw, 
   BarChart2, 
-  AlertCircle, 
-  Settings, 
-  DollarSign, 
-  Shield 
+  AlertCircle,
+  Settings,
+  DollarSign,
+  Shield,
+  Plus,
+  X
 } from 'lucide-react';
+
+const DEFAULT_WATCHLIST = ['VOO', 'MSFT', 'GOOGL', 'AAPL', 'NVDA', 'NFLX'];
+const WATCHLIST_KEY = 'alpha-engine-watchlist';
+
+const loadWatchlist = () => {
+  try {
+    const saved = localStorage.getItem(WATCHLIST_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return DEFAULT_WATCHLIST;
+};
+
+const saveWatchlist = (list) => {
+  localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list));
+};
 
 // --- UTILS & MATH HELPERS ---
 const seededRandom = (seed) => {
@@ -113,7 +133,47 @@ const calculateIndicators = (data) => {
     return { ...day, sma50, sma200, rsi, bbUpper, bbLower, zScore };
   });
 
-  return dataWithIndicators.slice(-200);
+  return dataWithIndicators;
+};
+
+const computeScores = (indicatorData, weights, recs) => {
+  const current = indicatorData[indicatorData.length - 1] || {};
+  const hasData = indicatorData.length > 0;
+
+  const trend = !hasData ? 0
+    : (current.price > current.sma200 && current.price > current.sma50) ? 1
+    : (current.price < current.sma200 && current.price < current.sma50) ? -1
+    : 0;
+
+  let momentum = 0;
+  if (hasData && current.rsi != null) {
+    if (current.rsi > 70) momentum = 1;
+    else if (current.rsi < 30) momentum = -1;
+  }
+
+  let meanRev = 0;
+  if (current.zScore < -2) meanRev = 1;
+  else if (current.zScore > 2) meanRev = -1;
+
+  let sentiment = 0;
+  if (recs) {
+    const { strongBuy = 0, buy = 0, hold = 0, sell = 0, strongSell = 0 } = recs;
+    const total = strongBuy + buy + hold + sell + strongSell;
+    if (total > 0) {
+      const raw = (strongBuy * 2 + buy * 1 + hold * 0 + sell * -1 + strongSell * -2) / total;
+      const normalized = Math.max(-1, Math.min(1, raw));
+      sentiment = normalized > 0.3 ? 1 : normalized < -0.3 ? -1 : 0;
+    } else {
+      sentiment = hasData ? (current.price > current.sma50 ? 1 : -1) : 0;
+    }
+  } else {
+    sentiment = hasData ? (current.price > current.sma50 ? 1 : -1) : 0;
+  }
+
+  const total = (trend * weights.trend) + (momentum * weights.momentum) + (meanRev * weights.meanRev) + (sentiment * weights.sentiment);
+  const verdict = total > 0.2 ? 'BUY' : total < -0.2 ? 'SELL' : 'NEUTRAL';
+
+  return { trend, momentum, meanRev, sentiment, total, verdict, price: current.price, rsi: current.rsi };
 };
 
 // --- COMPONENTS ---
@@ -149,19 +209,24 @@ const ScoreCard = ({ title, score, weight, description, icon: Icon, color }) => 
 };
 
 const TIME_RANGES = [
-  { label: '1M', value: '1mo', interval: '1d' },
-  { label: '3M', value: '3mo', interval: '1d' },
-  { label: '1Y', value: '1y', interval: '1d' },
-  { label: '5Y', value: '5y', interval: '1wk' },
-  { label: 'Max', value: 'max', interval: '1mo' },
+  { label: '1M', value: '1mo', interval: '1d', fetchRange: '2y', visiblePoints: 22 },
+  { label: '3M', value: '3mo', interval: '1d', fetchRange: '2y', visiblePoints: 65 },
+  { label: '6M', value: '6mo', interval: '1d', fetchRange: '2y', visiblePoints: 130 },
+  { label: '1Y', value: '1y', interval: '1d', fetchRange: '2y', visiblePoints: 252 },
+  { label: '3Y', value: '3y', interval: '1wk', fetchRange: '10y', visiblePoints: 156 },
+  { label: '5Y', value: '5y', interval: '1wk', fetchRange: '10y', visiblePoints: 260 },
+  { label: 'Max', value: 'max', interval: '1mo', fetchRange: 'max', visiblePoints: null },
 ];
 
 export default function App() {
   const apiKey = import.meta.env.VITE_FINNHUB_API_KEY || ''; 
   
-  const [ticker, setTicker] = useState('VOO');
+  const [watchlist, setWatchlist] = useState(loadWatchlist);
+  const [ticker, setTicker] = useState(watchlist[0] || 'VOO');
   const [timeRange, setTimeRange] = useState('1Y');
-  const [searchVal, setSearchVal] = useState('VOO');
+  const [searchVal, setSearchVal] = useState(ticker);
+  const [addingTicker, setAddingTicker] = useState(false);
+  const [newTicker, setNewTicker] = useState('');
   const [data, setData] = useState([]);
   const [weights, setWeights] = useState({ trend: 0.3, meanRev: 0.3, momentum: 0.2, sentiment: 0.2 });
   const [analyzing, setAnalyzing] = useState(false);
@@ -169,6 +234,61 @@ export default function App() {
   const [finnhubQuote, setFinnhubQuote] = useState(null);
   const [recommendations, setRecommendations] = useState(null);
   const [companyProfile, setCompanyProfile] = useState(null);
+  const [watchlistScores, setWatchlistScores] = useState({});
+
+  // Fetch & score all watchlist tickers
+  useEffect(() => {
+    const fetchAllScores = async () => {
+      const results = {};
+      await Promise.allSettled(watchlist.map(async (sym) => {
+        try {
+          const rangeConfig = TIME_RANGES[3]; // 1Y for overview
+          const yahooPath = `/v8/finance/chart/${sym}?range=${rangeConfig.fetchRange}&interval=${rangeConfig.interval}`;
+          const yahooProxyUrl = import.meta.env.VITE_YAHOO_PROXY_URL;
+          const url = import.meta.env.DEV
+            ? `/api/yahoo${yahooPath}`
+            : `${yahooProxyUrl}${yahooPath}`;
+          const response = await fetch(url);
+
+          let indicatorData;
+          if (response.ok) {
+            const json = await response.json();
+            const result = json.chart?.result?.[0];
+            if (result?.timestamp) {
+              const rawData = result.timestamp.map((ts, i) => ({
+                date: new Date(ts * 1000).toISOString().split('T')[0],
+                price: result.indicators.quote[0].close[i],
+                volume: result.indicators.quote[0].volume[i]
+              })).filter(d => d.price != null);
+              indicatorData = calculateIndicators(rawData);
+            }
+          }
+          if (!indicatorData) {
+            indicatorData = calculateIndicators(generateStockData(sym));
+          }
+
+          // Fetch recommendations for sentiment
+          let recs = null;
+          if (apiKey) {
+            try {
+              const recsRes = await fetch(`https://finnhub.io/api/v1/stock/recommendation?symbol=${sym}&token=${apiKey}`);
+              if (recsRes.ok) {
+                const recsData = await recsRes.json();
+                if (Array.isArray(recsData) && recsData.length > 0) recs = recsData[0];
+              }
+            } catch {}
+          }
+
+          results[sym] = computeScores(indicatorData, weights, recs);
+        } catch {
+          results[sym] = null;
+        }
+      }));
+      setWatchlistScores(results);
+    };
+
+    fetchAllScores();
+  }, [watchlist, weights, apiKey]);
 
   useEffect(() => {
     if (!ticker) return;
@@ -177,8 +297,8 @@ export default function App() {
 
     const fetchYahooData = async () => {
       try {
-        const rangeConfig = TIME_RANGES.find(r => r.label === timeRange) || TIME_RANGES[2];
-        const yahooPath = `/v8/finance/chart/${ticker}?range=${rangeConfig.value}&interval=${rangeConfig.interval}`;
+        const rangeConfig = TIME_RANGES.find(r => r.label === timeRange) || TIME_RANGES[3];
+        const yahooPath = `/v8/finance/chart/${ticker}?range=${rangeConfig.fetchRange}&interval=${rangeConfig.interval}`;
         const yahooProxyUrl = import.meta.env.VITE_YAHOO_PROXY_URL;
         const url = import.meta.env.DEV
           ? `/api/yahoo${yahooPath}`
@@ -201,13 +321,21 @@ export default function App() {
           volume: quotes.volume[i]
         })).filter(d => d.price != null);
 
-        const processedData = calculateIndicators(rawData);
-        setData(processedData);
+        const allData = calculateIndicators(rawData);
+        const visible = rangeConfig.visiblePoints
+          ? allData.slice(-rangeConfig.visiblePoints)
+          : allData;
+        setData(visible);
         setDataSource('yahoo');
       } catch (error) {
         console.warn('Yahoo fetch failed, using simulation:', error.message);
         const rawData = generateStockData(ticker);
-        setData(calculateIndicators(rawData));
+        const allData = calculateIndicators(rawData);
+        const rangeConfig = TIME_RANGES.find(r => r.label === timeRange) || TIME_RANGES[3];
+        const visible = rangeConfig.visiblePoints
+          ? allData.slice(-rangeConfig.visiblePoints)
+          : allData.slice(-200);
+        setData(visible);
         setDataSource('simulated');
       } finally {
         setAnalyzing(false);
@@ -358,19 +486,68 @@ export default function App() {
       {/* Quick Stock Picker */}
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold mr-1">Quick Pick</span>
-        {['VOO', 'MSFT', 'GOOGL', 'AAPL', 'NVDA', 'NFLX'].map((sym) => (
-          <button
-            key={sym}
-            onClick={() => { setTicker(sym); setSearchVal(sym); }}
-            className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
-              ticker === sym
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-blue-500 hover:text-slate-200'
-            }`}
-          >
-            {sym}
-          </button>
+        {watchlist.map((sym) => (
+          <div key={sym} className="relative group flex items-center">
+            <button
+              onClick={() => { setTicker(sym); setSearchVal(sym); }}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                ticker === sym
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 pr-7'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-blue-500 hover:text-slate-200 pr-7'
+              }`}
+            >
+              {sym}
+            </button>
+            {watchlist.length > 1 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const updated = watchlist.filter(s => s !== sym);
+                  setWatchlist(updated);
+                  saveWatchlist(updated);
+                  if (ticker === sym) { setTicker(updated[0]); setSearchVal(updated[0]); }
+                }}
+                className="absolute right-1 p-0.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
         ))}
+
+        {addingTicker ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const sym = newTicker.trim().toUpperCase();
+              if (sym && !watchlist.includes(sym)) {
+                const updated = [...watchlist, sym];
+                setWatchlist(updated);
+                saveWatchlist(updated);
+              }
+              setNewTicker('');
+              setAddingTicker(false);
+            }}
+            className="flex items-center gap-1"
+          >
+            <input
+              autoFocus
+              type="text"
+              value={newTicker}
+              onChange={(e) => setNewTicker(e.target.value)}
+              placeholder="TICKER"
+              className="bg-slate-800 border border-blue-500 text-slate-200 px-2 py-1 rounded-lg text-sm w-24 focus:outline-none"
+              onBlur={() => { setNewTicker(''); setAddingTicker(false); }}
+            />
+          </form>
+        ) : (
+          <button
+            onClick={() => setAddingTicker(true)}
+            className="p-1.5 rounded-lg bg-slate-800 border border-dashed border-slate-600 text-slate-500 hover:border-blue-500 hover:text-blue-400 transition-all"
+          >
+            <Plus size={14} />
+          </button>
+        )}
       </div>
 
       {/* Data Source Banner */}
@@ -544,7 +721,7 @@ export default function App() {
                             dataKey="date" 
                             tickFormatter={(tick) => {
                                 const d = new Date(tick);
-                                return `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`;
+                                return `${d.toLocaleString('default', { month: 'short' })} ${String(d.getFullYear()).slice(-2)}`;
                             }}
                             minTickGap={30}
                             tick={{fill: '#94a3b8', fontSize: 10}}
@@ -596,7 +773,7 @@ export default function App() {
                             dataKey="date" 
                             tickFormatter={(tick) => {
                                 const d = new Date(tick);
-                                return `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`;
+                                return `${d.toLocaleString('default', { month: 'short' })} ${String(d.getFullYear()).slice(-2)}`;
                             }}
                             minTickGap={30}
                             tick={{fill: '#94a3b8', fontSize: 10}}
@@ -633,7 +810,7 @@ export default function App() {
                             dataKey="date"
                             tickFormatter={(tick) => {
                                 const d = new Date(tick);
-                                return `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`;
+                                return `${d.toLocaleString('default', { month: 'short' })} ${String(d.getFullYear()).slice(-2)}`;
                             }}
                             minTickGap={30}
                             tick={{fill: '#94a3b8', fontSize: 10}}
@@ -742,6 +919,80 @@ export default function App() {
                 </div>
             </div>
 
+        </div>
+      </div>
+
+      {/* Watchlist Overview */}
+      <div className="mt-6 bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-700 flex items-center gap-2">
+          <BarChart2 size={18} className="text-blue-400" />
+          <h3 className="font-semibold text-slate-100">Watchlist Overview</h3>
+          <span className="text-xs text-slate-500 ml-1">({watchlist.length} stocks)</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-700">
+                <th className="text-left px-5 py-3 font-medium">Ticker</th>
+                <th className="text-right px-3 py-3 font-medium">Price</th>
+                <th className="text-center px-3 py-3 font-medium">Trend</th>
+                <th className="text-center px-3 py-3 font-medium">RSI Mom.</th>
+                <th className="text-center px-3 py-3 font-medium">Mean Rev.</th>
+                <th className="text-center px-3 py-3 font-medium">Sentiment</th>
+                <th className="text-right px-3 py-3 font-medium">Score</th>
+                <th className="text-center px-5 py-3 font-medium">Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              {watchlist.map((sym) => {
+                const s = watchlistScores[sym];
+                if (!s) return (
+                  <tr key={sym} className="border-b border-slate-700/50 hover:bg-slate-700/20">
+                    <td className="px-5 py-3 font-medium text-slate-300">{sym}</td>
+                    <td colSpan={7} className="px-3 py-3 text-center text-slate-500 text-xs">
+                      <RefreshCw className="inline animate-spin mr-1" size={12} /> Loading...
+                    </td>
+                  </tr>
+                );
+                const scoreColor = (v) => v > 0 ? 'text-green-400' : v < 0 ? 'text-red-400' : 'text-slate-500';
+                const scoreBadge = (v) => (
+                  <span className={`font-mono text-xs ${scoreColor(v)}`}>
+                    {v > 0 ? '+1' : v < 0 ? '-1' : '0'}
+                  </span>
+                );
+                return (
+                  <tr
+                    key={sym}
+                    onClick={() => { setTicker(sym); setSearchVal(sym); }}
+                    className={`border-b border-slate-700/50 cursor-pointer transition-colors ${
+                      ticker === sym ? 'bg-blue-500/10' : 'hover:bg-slate-700/20'
+                    }`}
+                  >
+                    <td className="px-5 py-3 font-semibold text-slate-200">{sym}</td>
+                    <td className="text-right px-3 py-3 font-mono text-slate-300">
+                      ${s.price?.toFixed(2) ?? '—'}
+                    </td>
+                    <td className="text-center px-3 py-3">{scoreBadge(s.trend)}</td>
+                    <td className="text-center px-3 py-3">{scoreBadge(s.momentum)}</td>
+                    <td className="text-center px-3 py-3">{scoreBadge(s.meanRev)}</td>
+                    <td className="text-center px-3 py-3">{scoreBadge(s.sentiment)}</td>
+                    <td className={`text-right px-3 py-3 font-mono font-semibold ${scoreColor(s.total)}`}>
+                      {s.total > 0 ? '+' : ''}{s.total.toFixed(2)}
+                    </td>
+                    <td className="text-center px-5 py-3">
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${
+                        s.verdict === 'BUY' ? 'bg-green-500/20 text-green-400' :
+                        s.verdict === 'SELL' ? 'bg-red-500/20 text-red-400' :
+                        'bg-yellow-500/20 text-yellow-400'
+                      }`}>
+                        {s.verdict}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
