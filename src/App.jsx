@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ComposedChart, 
-  LineChart, 
-  Line, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  ReferenceLine 
+import {
+  ComposedChart,
+  LineChart,
+  BarChart,
+  Bar,
+  Line,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine
 } from 'recharts';
 import { 
   Search, 
@@ -607,6 +609,52 @@ export default function App() {
                         <ReferenceLine y={30} stroke="#22c55e" strokeDasharray="3 3" />
                         <Line type="monotone" dataKey="rsi" stroke="#a855f7" dot={false} strokeWidth={2} />
                     </LineChart>
+                </ResponsiveContainer>
+            </div>
+
+            {/* Volume Chart */}
+            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 h-[200px]">
+                <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-semibold text-slate-100 text-sm">Volume</h3>
+                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-700 text-slate-300">
+                        {current.volume ? `${(current.volume / 1e6).toFixed(2)}M` : '—'}
+                    </span>
+                </div>
+                <ResponsiveContainer width="100%" height="80%">
+                    <BarChart data={data}>
+                        <defs>
+                            <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0.1}/>
+                            </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                        <XAxis
+                            dataKey="date"
+                            tickFormatter={(tick) => {
+                                const d = new Date(tick);
+                                return `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`;
+                            }}
+                            minTickGap={30}
+                            tick={{fill: '#94a3b8', fontSize: 10}}
+                            axisLine={false}
+                            tickLine={false}
+                        />
+                        <YAxis
+                            orientation="right"
+                            tickFormatter={(val) => `${(val / 1e6).toFixed(1)}M`}
+                            tick={{fill: '#94a3b8', fontSize: 10}}
+                            axisLine={false}
+                            tickLine={false}
+                        />
+                        <Tooltip
+                            contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px'}}
+                            itemStyle={{color: '#e2e8f0'}}
+                            labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                            formatter={(value) => [`${(value / 1e6).toFixed(2)}M`, 'Volume']}
+                        />
+                        <Bar dataKey="volume" fill="url(#colorVolume)" radius={[2, 2, 0, 0]} />
+                    </BarChart>
                 </ResponsiveContainer>
             </div>
         </div>
