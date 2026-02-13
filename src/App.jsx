@@ -157,9 +157,9 @@ const TIME_RANGES = [
 export default function App() {
   const apiKey = import.meta.env.VITE_FINNHUB_API_KEY || ''; 
   
-  const [ticker, setTicker] = useState('NFLX');
+  const [ticker, setTicker] = useState('VOO');
   const [timeRange, setTimeRange] = useState('1Y');
-  const [searchVal, setSearchVal] = useState('NFLX');
+  const [searchVal, setSearchVal] = useState('VOO');
   const [data, setData] = useState([]);
   const [weights, setWeights] = useState({ trend: 0.3, meanRev: 0.3, momentum: 0.2, sentiment: 0.2 });
   const [analyzing, setAnalyzing] = useState(false);
@@ -352,6 +352,24 @@ export default function App() {
           </button>
         </form>
       </header>
+
+      {/* Quick Stock Picker */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold mr-1">Quick Pick</span>
+        {['VOO', 'MSFT', 'GOOGL', 'AAPL', 'NVDA', 'NFLX'].map((sym) => (
+          <button
+            key={sym}
+            onClick={() => { setTicker(sym); setSearchVal(sym); }}
+            className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
+              ticker === sym
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-blue-500 hover:text-slate-200'
+            }`}
+          >
+            {sym}
+          </button>
+        ))}
+      </div>
 
       {/* Data Source Banner */}
       {dataSource === 'yahoo' && (
